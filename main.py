@@ -3,6 +3,7 @@ import os
 from typing import Callable, List, Optional, Tuple
 import tensorflow as tf
 import tree
+import functools
 
 import tml.common.checkpointing.snapshot as snapshot_lib
 from tml.common.device import setup_and_get_device
@@ -16,11 +17,13 @@ from tml.core.train_pipeline import TrainPipelineSparseDist
 from tml.ml_logging.torch_logging import logging 
 import tml.core.metrics as core_metrics
 from tml.projects.twhin.metrics import create_metrics
+from tml.projects.home.recap.data import preprocessors
 
 
 import tml.projects.home.recap.data.dataset as ds
 import tml.projects.home.recap.config as recap_config_mod
 import tml.projects.home.recap.optimizer as optimizer_mod
+from tml.projects.home.recap.data.tfe_parsing import get_seg_dense_parse_fn
 
 
 # from tml.projects.home.recap import feature
@@ -30,6 +33,7 @@ import torch
 import torch.distributed as dist
 from torchrec.distributed.model_parallel import DistributedModelParallel
 import torch.nn.functional as F
+from torch.utils.data import DataLoader, Dataset
 
 from absl import app, flags, logging
 
@@ -60,18 +64,70 @@ def run(unused_argv: str, data_service_dispatcher: Optional[str] = None):
  config = tml_config_mod.load_config_from_yaml(recap_config_mod.RecapConfig, FLAGS.config_path)
  data_service_dispatcher = None
 
- train_dataset = ds.RecapDataset(
-   data_config=config.train_data,
+ data_config= config.test_data
+
+ mode = recap_config_mod.JobMode.EVALUATE
+ test_dataset = ds.RecapDataset(
+   data_config=data_config,
    dataset_service=data_service_dispatcher,
-   mode=recap_config_mod.JobMode.TRAIN,
+   mode=mode,
    compression=config.train_data.dataset_service_compression,
    vocab_mapper=None,
-   repeat=True,
+   repeat=False,
  )
+ _parse_fn = get_seg_dense_parse_fn(data_config)
+
+ if data_config.preprocess:
+      preprocessor = preprocessors.build_preprocess(data_config.preprocess, mode=mode)
+
+ should_add_weights = any(
+        [
+          task_cfg.pos_downsampling_rate != 1.0 or task_cfg.neg_downsampling_rate != 1.0
+          for task_cfg in data_config.tasks.values()
+        ]
+      )
+ output_map_fn = ds._map_output_for_train_eval
+ _output_map_fn = functools.partial(
+      output_map_fn,
+      tasks=data_config.tasks,
+      preprocessor=preprocessor,
+      add_weights=should_add_weights,
+    )
+
+
  
+  # Combine functions into one map call to reduce overhead.
+ map_fn = functools.partial(
+      ds._chain,
+      f1=_parse_fn,
+      f2=_output_map_fn,
+    )
  
+ glob = data_config.inputs
+ filenames = sorted(tf.io.gfile.glob(glob))
+ filenames_ds = (
+      tf.data.Dataset.from_tensor_slices(filenames).shuffle(len(filenames))
+      # Because of drop_remainder, if our dataset does not fill
+      # up a batch, it will emit nothing without this repeat.
+      # .repeat(0)
+    )
  
- torch_element_spec = train_dataset.torch_element_spec
+ first_filename = next(iter(filenames_ds))
+ file_ds = tf.data.TFRecordDataset([first_filename], compression_type="GZIP")
+ 
+ file_ds = file_ds.batch(batch_size=data_config.global_batch_size, drop_remainder=True).map(
+        map_fn,
+        num_parallel_calls=data_config.map_num_parallel_calls
+        or tf.data.experimental.AUTOTUNE,
+      )
+
+ def function_mapper(iterable, func):
+    for item in iterable:
+        yield func(item)
+
+ file_ds_iterable = function_mapper(file_ds,ds.to_batch)
+
+ torch_element_spec = test_dataset.torch_element_spec
  
  config = tml_config_mod.load_config_from_yaml(recap_config_mod.RecapConfig, FLAGS.config_path)
  loss_fn = losses.build_multi_task_loss(
@@ -111,20 +167,30 @@ def run(unused_argv: str, data_service_dispatcher: Optional[str] = None):
  
  checkpoint_handler.restore(chosen_checkpoint)
 
- train_iterator = iter(train_dataset.to_dataloader())
  
+#  test_loader = test_dataset.to_dataloader()
+#  test_loader_iter = iter(test_loader)
+
+#  file_ds_iter = iter(file_ds)
+#  print(next(file_ds_iter)[0]['author_embedding'])
+#  print(next(file_ds_iter)[0]['author_embedding'])
+ 
+
  eval_pipeline = TrainPipelineSparseDist(model, optimizer, device) 
+
  
  
  labels = list(config.model.tasks.keys())
- eval_steps = 1
+ eval_steps = 2
  print('#' * 100)
  for _ in range(eval_steps):
-    new_iterator =ctl.get_new_iterator(train_iterator)
-    step_fn = ctl._get_step_fn(eval_pipeline, new_iterator, training=False)
-    
-    results = step_fn()
+    new_iterator =iter(file_ds_iterable)
+    eval_pipeline._model.eval()
+    outputs = eval_pipeline.progress(new_iterator)
+  
+    results = tree.map_structure(lambda elem: elem.detach(), outputs)
     probabilities = results['probabilities'][0].cpu()
+
     for key,val in enumerate(probabilities):
         print(labels[key] + ': ' + str(val.item()))
     print('#' * 100)

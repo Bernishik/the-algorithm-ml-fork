@@ -49,7 +49,6 @@ def to_batch(x, sparse_feature_names: Optional[List[str]] = None) -> RecapBatch:
   except ValueError:
     # For Mode.INFERENCE, we do not expect to recieve labels as part of the input tuple
     features_in, labels = x, None
-
   sparse_features = keyed_jagged_tensor_from_tensors_dict({})
   if sparse_feature_names:
     sparse_features = keyed_jagged_tensor_from_tensors_dict(
@@ -88,15 +87,20 @@ def to_batch(x, sparse_feature_names: Optional[List[str]] = None) -> RecapBatch:
   )
 
 
-def _chain(param, f1, f2):
+def _chain(param, f1, f2, f3 = None):
   """
   Reduce multiple functions into one chained function
   _chain(x, f1, f2) -> f2(f1(x))
   """
   output = param
   fns = [f1, f2]
+  if(f3):
+    fns.append(f3)
+  
+  
   for f in fns:
     output = f(output)
+
   return output
 
 
@@ -206,6 +210,7 @@ def _map_output_for_train_eval(
     inputs = preprocessor(inputs)
 
   label_values = tf.squeeze(tf.stack([inputs[label] for label in tasks], axis=1), axis=[-1])
+  
 
   for label in tasks:
     del inputs[label]
@@ -325,6 +330,7 @@ class RecapDataset(torch.utils.data.IterableDataset):
       batch_size=per_replica_bsz,
     )
 
+
     if self._repeat:
       logging.info("Repeating dataset")
       dataset = dataset.repeat()
@@ -422,7 +428,7 @@ class RecapDataset(torch.utils.data.IterableDataset):
 
     def per_shard_dataset(filename):
       ds = tf.data.TFRecordDataset([filename], compression_type="GZIP")
-      return ds.prefetch(4)
+      return ds.shuffle(buffer_size=1000).prefetch(4)
 
     ds = filenames_ds.interleave(
       per_shard_dataset,
@@ -431,7 +437,7 @@ class RecapDataset(torch.utils.data.IterableDataset):
       num_parallel_calls=self._data_config.interleave_num_parallel_calls
       or tf.data.experimental.AUTOTUNE,
     )
-
+    
     # Combine functions into one map call to reduce overhead.
     map_fn = functools.partial(
       _chain,

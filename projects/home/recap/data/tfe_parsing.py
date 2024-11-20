@@ -82,7 +82,9 @@ def parse_tf_example(
   Returns:
     Dictionary of tensors to be used as model input.
   """
+  
   inputs = tf.io.parse_example(serialized=serialized_example, features=tfe_schema)
+
 
   for new_feature_name, old_feature_name in seg_dense_schema_config.renamed_features.items():
     inputs[new_feature_name] = inputs.pop(old_feature_name)
@@ -126,4 +128,5 @@ def get_seg_dense_parse_fn(data_config: recap_data_config.RecapDataConfig):
     tfe_schema=tf_example_schema,
     seg_dense_schema_config=data_config.seg_dense_schema,
   )
+ 
   return parse

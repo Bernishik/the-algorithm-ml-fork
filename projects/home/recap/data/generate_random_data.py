@@ -9,7 +9,7 @@ from tml.core import config as tml_config_mod
 import tml.projects.home.recap.config as recap_config_mod
 
 flags.DEFINE_string("config_path", None, "Path to hyperparameters for model.")
-flags.DEFINE_integer("n_examples", 100, "Numer of examples to generate.")
+flags.DEFINE_integer("n_examples", 1000, "Numer of examples to generate.")
 
 FLAGS = flags.FLAGS
 
@@ -62,9 +62,10 @@ def generate_data(data_path: str, config: recap_config_mod.RecapConfig):
   record_filename = os.path.join(data_path, "random.tfrecord.gz")
 
   with tf.io.TFRecordWriter(record_filename, "GZIP") as writer:
-    random_example = _generate_random_example(tf_example_schema)
-    serialized_example = _serialize_example(random_example)
-    writer.write(serialized_example)
+    for n in range(FLAGS.n_examples):
+      random_example = _generate_random_example(tf_example_schema)
+      serialized_example = _serialize_example(random_example)
+      writer.write(serialized_example)
 
 
 def _generate_data_main(unused_argv):
@@ -75,6 +76,8 @@ def _generate_data_main(unused_argv):
   logging.info("Putting random data in %s", data_path)
 
   generate_data(data_path, config)
+  logging.info("Generated random data in %s", data_path)
+
 
 
 if __name__ == "__main__":

@@ -35,6 +35,7 @@ class RecapConfig(config_mod.BaseConfig):
   training: TrainingConfig = pydantic.Field(TrainingConfig())
   model: model_config.ModelConfig
   train_data: data_config.RecapDataConfig
+  test_data: data_config.RecapDataConfig
   validation_data: Dict[str, data_config.RecapDataConfig]
   optimizer: optimizer_config.RecapOptimizerConfig
 
