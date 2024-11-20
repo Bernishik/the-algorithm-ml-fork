@@ -6,7 +6,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
 fi
 
 # You may need to point this to a version of python 3.10
-PYTHONBIN="/opt/ee/python/3.10/bin/python3.10"
+PYTHONBIN=$(which python3.10)
 echo Using "PYTHONBIN=$PYTHONBIN"
 
 # Put venv in tmp, these things are not made to last, just rebuild.
