@@ -167,32 +167,63 @@ def run(unused_argv: str, data_service_dispatcher: Optional[str] = None):
  
  checkpoint_handler.restore(chosen_checkpoint)
 
- 
-#  test_loader = test_dataset.to_dataloader()
-#  test_loader_iter = iter(test_loader)
 
-#  file_ds_iter = iter(file_ds)
-#  print(next(file_ds_iter)[0]['author_embedding'])
-#  print(next(file_ds_iter)[0]['author_embedding'])
- 
+
 
  eval_pipeline = TrainPipelineSparseDist(model, optimizer, device) 
 
+ scored_tweets_model_weight_fav= 0.5
+ scored_tweets_model_weight_retweet= 1.0
+ scored_tweets_model_weight_reply= 13.5
+ scored_tweets_model_weight_good_profile_click= 12.0
+ scored_tweets_model_weight_video_playback50= 0.005
+ scored_tweets_model_weight_reply_engaged_by_author= 75.0
+ scored_tweets_model_weight_good_click= 11.0
+ scored_tweets_model_weight_good_click_v2= 10.0
+ scored_tweets_model_weight_negative_feedback_v2= -74.0
+ scored_tweets_model_weight_report= -369.0
  
+ scored_weight = [
+  scored_tweets_model_weight_fav,
+  scored_tweets_model_weight_good_click,
+  scored_tweets_model_weight_good_click_v2,
+  scored_tweets_model_weight_negative_feedback_v2,
+  scored_tweets_model_weight_good_profile_click,
+  scored_tweets_model_weight_reply,
+  scored_tweets_model_weight_reply_engaged_by_author,
+  scored_tweets_model_weight_report,
+  scored_tweets_model_weight_retweet,
+  scored_tweets_model_weight_video_playback50,
+  ]
+
  
  labels = list(config.model.tasks.keys())
- eval_steps = 2
+ take_first_n_candidates = 2
  print('#' * 100)
- for _ in range(eval_steps):
+ for _ in range(take_first_n_candidates):
     new_iterator =iter(file_ds_iterable)
     eval_pipeline._model.eval()
     outputs = eval_pipeline.progress(new_iterator)
   
     results = tree.map_structure(lambda elem: elem.detach(), outputs)
     probabilities = results['probabilities'][0].cpu()
+    print(results)
 
+    score = 0
     for key,val in enumerate(probabilities):
         print(labels[key] + ': ' + str(val.item()))
+    
+    print("Score = ",end='')
+    for key,val in enumerate(probabilities):
+        if(key != 0):
+          print(" + ",end='')
+
+        print(f"({scored_weight[key]} * {val.item()})",end='')
+        score += scored_weight[key] * val.item()
+    print(f"= {score}")
+    
+   
+    
     print('#' * 100)
         
 
