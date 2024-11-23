@@ -59,6 +59,8 @@ Nvidia GPU з СUDA ядрами(робота виконана на відеок
    `sudo apt install python3.10`
 
    `sudo apt install python3.10-venv`
+
+   `sudo apt-get install python3-tk`
 3. Опціонально: змінити в файлі images/init_venv.sh PYTHONBIN на шлях до директорії python
 
    `nano ./images/init_venv.sh`
@@ -73,6 +75,15 @@ Nvidia GPU з СUDA ядрами(робота виконана на відеок
 
    `source $HOME/tml_venv/bin/activate`
 
+6. Встановелння залежностей
+
+   
+   `pip install matplotlib==3.8 --no-deps`
+   `pip install seaborn --no-deps`
+   `pip install pillow --no-deps`
+   `pip install cycler --no-deps`
+   `pip install kiwisolver --no-deps`
+   `pip install scipy --no-deps`
 6. Генерація випадкових даних
 
    `projects/home/recap/script/create_random_data.sh`
@@ -81,6 +92,7 @@ Nvidia GPU з СUDA ядрами(робота виконана на відеок
    `projects/home/recap/script/run_local.sh`
 
 8. Запуск оцінки score
+
    `python main.py`
 
 ### Додаткові команди

@@ -4,6 +4,9 @@ from typing import Callable, List, Optional, Tuple
 import tensorflow as tf
 import tree
 import functools
+import matplotlib
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 import tml.common.checkpointing.snapshot as snapshot_lib
 from tml.common.device import setup_and_get_device
@@ -34,6 +37,7 @@ import torch.distributed as dist
 from torchrec.distributed.model_parallel import DistributedModelParallel
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
+import scipy.stats as stats
 
 from absl import app, flags, logging
 
@@ -43,6 +47,7 @@ flags.DEFINE_bool("debug_loop", False, "Run with debug loop (slow)")
 flags.DEFINE_boolean('standalone', False, 'Whether to run in standalone mode')
 flags.DEFINE_integer('nnodes', 1, 'Number of nodes')
 flags.DEFINE_integer('nproc_per_node', 1, 'Number of processes per node')
+flags.DEFINE_integer("display_formula", 1, "Display Formula")
 
 FLAGS = flags.FLAGS
 
@@ -199,6 +204,7 @@ def run(unused_argv: str, data_service_dispatcher: Optional[str] = None):
  
  labels = list(config.model.tasks.keys())
  take_first_n_candidates = 1000
+ half = take_first_n_candidates / 2
  print('#' * 100)
 
  res = []
@@ -215,34 +221,64 @@ def run(unused_argv: str, data_service_dispatcher: Optional[str] = None):
     score = 0
     
     for key,val in enumerate(probabilities):
-        print(labels[key] + ': ' + str(val.item()))
+        if(FLAGS.display_formula):
+          print(labels[key] + ': ' + str(val.item()))
     
     print("Score = ",end='')
     for key,val in enumerate(probabilities):
-        if(key != 0):
-          print(" + ",end='')
+        if(FLAGS.display_formula):
+          if(key != 0):
+            print(" + ",end='')
 
-        print(f"({scored_weight[key]} * {val.item()})",end='')
+          print(f"({scored_weight[key]} * {val.item()})",end='')
         score += scored_weight[key] * val.item()
     print(f"= {score}")
-    res.append([score, _ > 500])
+    res.append([score, _ > half])
    
     
     print('#' * 100)
 
  sorted_res = sorted(res, key=lambda x: x[0], reverse=True)
- positives_first = 0
- negatives_first = 0
- for k,r in enumerate(sorted_res):
-    print(r[0], str(r[1]))
-    if (k < 500):
-     if(r[1] == True):
-        positives_first = positives_first + 1
-     else:
-        negatives_first = negatives_first + 1
 
- print(positives_first)
- print(negatives_first)
+ positive_scores = [item[0] for item in sorted_res if item[1]]  
+ negative_scores = [item[0] for item in sorted_res if not item[1]] 
+ matplotlib.use('TkAgg')
+  # Візуалізація розподілу
+ plt.figure(figsize=(14, 6))
+ 
+ # Гістограма розподілу
+ sns.histplot(data=positive_scores, color="blue", label="Positive", kde=True, stat="density", bins=30, alpha=0.6)
+ sns.histplot(data=negative_scores, color="red", label="Negative", kde=True, stat="density", bins=30, alpha=0.6)
+ plt.title("Розподіл скорів для позитивних і негативних параметрів")
+ plt.xlabel("Скор")
+ plt.ylabel("Щільність")
+ plt.legend()
+ plt.show()
+
+ # t-тест для незалежних вибірок
+ t_stat, p_value = stats.ttest_ind(positive_scores, negative_scores)
+ 
+ print(f"t-статистика: {t_stat}")
+ print(f"p-значення: {p_value}")
+ 
+ # Інтерпретація результатів
+ if p_value < 0.05:
+     print("Є статистично значуща різниця між середніми значеннями груп.")
+ else:
+     print("Немає статистично значущої різниці між середніми значеннями груп.")
+
+#  positives_first = 0
+#  negatives_first = 0
+#  for k,r in enumerate(sorted_res):
+#     print(r[0], str(r[1]))
+#     if (k < half):
+#      if(r[1] == True):
+#         positives_first = positives_first + 1
+#      else:
+#         negatives_first = negatives_first + 1
+
+#  print(positives_first)
+#  print(negatives_first)
     
 
 

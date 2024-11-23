@@ -10,8 +10,9 @@ import tml.projects.home.recap.config as recap_config_mod
 
 flags.DEFINE_string("config_path", None, "Path to hyperparameters for model.")
 flags.DEFINE_integer("n_examples", 1000 + 2, "Numer of examples to generate.")
-flags.DEFINE_integer("first_n_positive", 500 + 2, "Numer of positive examples to generate.")
+flags.DEFINE_integer("first_n_positive", 500, "Numer of positive examples to generate.")
 flags.DEFINE_integer("first_n_negative", 500, "Numer of negative examples to generate.")
+
 
 
 FLAGS = flags.FLAGS
@@ -55,31 +56,47 @@ def _generate_random_example_v2(
     """
     example = {}
 
+    meta_features = [
+  'meta.author_id',
+  'meta.user_id',
+  'meta.tweet_id'
+]
+
     for feature_name, feature_spec in tf_example_schema.items():
         dtype = feature_spec.dtype
         shape = feature_spec.shape
 
-        if mode == "negative_zero" and feature_name in negative_features:
+        if mode == "negative_zero":
             # Характеристики, що погіршують скор, дорівнюють нулю
-            x = tf.zeros(shape=shape, dtype=dtype)
-        elif mode == "positive_zero" and feature_name in positive_features :
+            if (feature_name in negative_features):
+              x = tf.zeros(shape=shape, dtype=dtype)
+            else:
+                if (dtype == tf.int64) or (dtype == tf.int32):
+                  x = tf.experimental.numpy.random.randint(0, high=10, size=feature_spec.shape, dtype=dtype)
+                elif (dtype == tf.float32) or (dtype == tf.float64):
+                  x = tf.random.uniform(shape=[feature_spec.shape], dtype=dtype)
+                else:
+                  raise NotImplementedError(f"Unknown type {dtype}")
+
+        elif mode == "positive_zero":
             # Характеристики, що покращують скор, дорівнюють нулю
-            x = tf.zeros(shape=shape, dtype=dtype)
+            
+            if(feature_name in positive_features ):
+              x = tf.zeros(shape=shape, dtype=dtype)
+            else:
+                if (dtype == tf.int64) or (dtype == tf.int32):
+                  x = tf.experimental.numpy.random.randint(0, high=10, size=feature_spec.shape, dtype=dtype)
+                elif (dtype == tf.float32) or (dtype == tf.float64):
+                  x = tf.random.uniform(shape=[feature_spec.shape], dtype=dtype)
+                else:
+                  raise NotImplementedError(f"Unknown type {dtype}")
         else:
-            if(embeding == "random"):
-              if (dtype == tf.int64) or (dtype == tf.int32):
-                x = tf.experimental.numpy.random.randint(0, high=10, size=shape, dtype=dtype)
-              elif (dtype == tf.float32) or (dtype == tf.float64):
-                x = tf.random.uniform(shape=[shape], dtype=dtype)
-              else:
-                raise NotImplementedError(f"Unknown type {dtype}")
-            else: 
-              if (dtype == tf.int64) or (dtype == tf.int32):
-                 x = tf.zeros(shape=shape, dtype=dtype)
-              elif (dtype == tf.float32) or (dtype == tf.float64):
-                 x = tf.zeros(shape=[shape], dtype=dtype)
-              else:
-                raise NotImplementedError(f"Unknown type {dtype}")
+            if (dtype == tf.int64) or (dtype == tf.int32):
+              x = tf.experimental.numpy.random.randint(0, high=10, size=feature_spec.shape, dtype=dtype)
+            elif (dtype == tf.float32) or (dtype == tf.float64):
+              x = tf.random.uniform(shape=[feature_spec.shape], dtype=dtype)
+            else:
+              raise NotImplementedError(f"Unknown type {dtype}")
 
         example[feature_name] = x
 
@@ -121,23 +138,29 @@ def generate_data(data_path: str, config: recap_config_mod.RecapConfig):
   ]
 
   positive_features = [
+    'recap.engagement.is_profile_clicked_and_profile_engaged',
+    'recap.engagement.is_replied_reply_engaged_by_author',
+    'recap.engagement.is_video_playback_50',
     "recap.engagement.is_retweeted",
     "recap.engagement.is_favorited",
     "recap.engagement.is_shared",
+    "recap.engagement.is_replied",
     "recap.engagement.is_good_clicked_convo_desc_favorited_or_replied",
     "recap.engagement.is_tweet_detail_dwelled_15_sec"
 ]
+  
+  
 
   with tf.io.TFRecordWriter(record_filename, "GZIP") as writer:
     for n in range(FLAGS.n_examples):
       print(f'GENERATION IN PROGRESS WAIT {n+1}/{FLAGS.n_examples}')
       random_example = None
       if(n < FLAGS.first_n_positive):
-        random_example = _generate_random_example_v2(tf_example_schema, 'negative_zero', "random", positive_features, negative_features)
+        random_example = _generate_random_example_v2(tf_example_schema, 'negative_zero', "zero", positive_features, negative_features)
       elif n < FLAGS.first_n_positive + FLAGS.first_n_negative:
-        random_example = _generate_random_example_v2(tf_example_schema,'positive_zero', "ramdom", positive_features,negative_features)
+        random_example = _generate_random_example_v2(tf_example_schema,'positive_zero', "zero", positive_features,negative_features)
       else:
-        random_example = _generate_random_example_v2(tf_example_schema, positive_features,negative_features)
+        random_example = _generate_random_example_v2(tf_example_schema, 'random', "zero", positive_features,negative_features)
       serialized_example = _serialize_example(random_example)
       writer.write(serialized_example)
 
