@@ -79,11 +79,17 @@ Nvidia GPU з СUDA ядрами(робота виконана на відеок
 
    
    `pip install matplotlib==3.8 --no-deps`
+
    `pip install seaborn --no-deps`
+
    `pip install pillow --no-deps`
+
    `pip install cycler --no-deps`
+
    `pip install kiwisolver --no-deps`
+
    `pip install scipy --no-deps`
+   
 6. Генерація випадкових даних
 
    `projects/home/recap/script/create_random_data.sh`
