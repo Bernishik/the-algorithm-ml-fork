@@ -198,18 +198,22 @@ def run(unused_argv: str, data_service_dispatcher: Optional[str] = None):
 
  
  labels = list(config.model.tasks.keys())
- take_first_n_candidates = 2
+ take_first_n_candidates = 1000
  print('#' * 100)
+
+ res = []
  for _ in range(take_first_n_candidates):
+    
     new_iterator =iter(file_ds_iterable)
+
     eval_pipeline._model.eval()
     outputs = eval_pipeline.progress(new_iterator)
   
     results = tree.map_structure(lambda elem: elem.detach(), outputs)
     probabilities = results['probabilities'][0].cpu()
-    print(results)
 
     score = 0
+    
     for key,val in enumerate(probabilities):
         print(labels[key] + ': ' + str(val.item()))
     
@@ -221,11 +225,25 @@ def run(unused_argv: str, data_service_dispatcher: Optional[str] = None):
         print(f"({scored_weight[key]} * {val.item()})",end='')
         score += scored_weight[key] * val.item()
     print(f"= {score}")
-    
+    res.append([score, _ > 500])
    
     
     print('#' * 100)
-        
+
+ sorted_res = sorted(res, key=lambda x: x[0], reverse=True)
+ positives_first = 0
+ negatives_first = 0
+ for k,r in enumerate(sorted_res):
+    print(r[0], str(r[1]))
+    if (k < 500):
+     if(r[1] == True):
+        positives_first = positives_first + 1
+     else:
+        negatives_first = negatives_first + 1
+
+ print(positives_first)
+ print(negatives_first)
+    
 
 
 
